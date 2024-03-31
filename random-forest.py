@@ -1,31 +1,36 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Mar  5 03:37:54 2024
-
-@author: jordangreen
-"""
-
+import yfinance as yf
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import pandas as pd
+import warnings
+import numpy as np
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # Features: prices last 30 days
 
 # Load dataset
 
-data = pd.read_csv('/Users/jordangreen/Desktop/CS365-Project/Datasets/crypto-values/BTC.csv')
+data = yf.download("BTC-USD", start="2022-01-01", end="2024-03-05", interval="1d")
 
 # Preprocess data
 window_size = 30
-for i in range(window_size):
-    data[f'Price_{i}'] = data['close'].shift(i)
-    
-data['Target'] = data['close'].shift(-1)
+shifted_data_frames = []
+features =['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+for feature in features:
+    for i in range(window_size): 
+        column_name = f'{feature}_{i}'
+        shifted_df = data[feature].shift(i).rename(column_name)
+        shifted_data_frames.append(shifted_df)
+
+shifted_data = pd.concat(shifted_data_frames, axis =1)
+data = pd.concat([data, shifted_data], axis=1)
+
+data['Target'] = data['Close'].shift(-1)
 data = data.dropna().reset_index(drop=True)
     
-X = data[[f'Price_{i}' for i in range(window_size)]]
+X = data.loc[:, data.columns.str.contains('_\d+$')]
 y = data['Target']
 
 # Split the data
@@ -43,10 +48,15 @@ mae = mean_absolute_error(y_test, predictions)
 mse = mean_squared_error(y_test, predictions)
 r2 = r2_score(y_test, predictions)
 
+print(f"The Mean Absolute Error: {mae}")
+print(f"The Mean Squared Error: {mse}")
+print(f"The R2 Score: {r2}\n")
 # Iterative forecast
 
 def iterative_forecasting(model, initial_input, steps):
-    
+    #features in initial_input must be the same as those used during model training
+    #initial_input should have the features in the same order as the model was trained on
+
     current_input = initial_input.copy()
     predictions = []
     
@@ -56,23 +66,17 @@ def iterative_forecasting(model, initial_input, steps):
         next_step_prediction = model.predict(current_input.reshape(1, -1))[0]
         predictions.append(next_step_prediction)
         
-        # Update the current input for the next prediction
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        current_input = np.roll(current_input, -1)
+        current_input[-1] = next_step_prediction
+    
+    return predictions
 
+#predicts the closing price for the next day 
+feature_names = X_train.columns.tolist()
+latest_input = data.loc[:, data.columns.str.contains('_\d+$')].iloc[-1].values.reshape(1, -1)
+latest_input_df = pd.DataFrame(latest_input, columns=feature_names)
+predicted_close_price = model.predict(latest_input_df)[0]
+print(f"Predicted closing price for BTC on 2024-03-06: {predicted_close_price}")
+
+#val = yf.download("BTC-USD", start="2024-03-06", end="2024-03-07", interval="1d")['Close'].iloc[0]
+#print(f"Actual closing price for BTC on 2024-03-06: {val}")
